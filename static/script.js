@@ -42,7 +42,26 @@ const formatExtensions = {
     'jpg': ['.jpg', '.jpeg'],
     'gif': ['.gif'],
     'webp': ['.webp'],
-    'heic': ['.heic', '.heif']
+    'heic': ['.heic', '.heif'],
+    'raw': [
+        '.cr2', '.cr3',      // Canon
+        '.nef', '.nrw',      // Nikon
+        '.arw', '.srf', '.sr2',  // Sony
+        '.orf',              // Olympus
+        '.rw2',              // Panasonic
+        '.dng',              // Adobe/Universal
+        '.raw', '.rwl',      // Leica
+        '.raf',              // Fuji
+        '.pef', '.ptx',      // Pentax
+        '.x3f',              // Sigma
+        '.srw',              // Samsung
+        '.erf',              // Epson
+        '.mrw',              // Minolta
+        '.3fr',              // Hasselblad
+        '.mef',              // Mamiya
+        '.mos',              // Leaf
+        '.kdc', '.dcr',      // Kodak
+    ]
 };
 
 // Initialize
@@ -132,7 +151,9 @@ function handleFileSelect(e) {
 function updateFileInputAccept() {
     const format = sourceFormat.value;
     if (format === 'all') {
-        fileInput.accept = 'image/*,.heic,.heif';
+        // Include all supported formats
+        const rawExts = formatExtensions['raw'].join(',');
+        fileInput.accept = `image/*,.heic,.heif,${rawExts}`;
     } else {
         const extensions = formatExtensions[format];
         fileInput.accept = extensions.join(',');
@@ -168,12 +189,13 @@ function addFiles(files) {
 
 function isImageFile(file) {
     const imageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
-    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif'];
 
     if (imageTypes.includes(file.type)) return true;
 
+    // Check all supported extensions including RAW
     const ext = '.' + file.name.split('.').pop().toLowerCase();
-    return imageExtensions.includes(ext);
+    const allExtensions = Object.values(formatExtensions).flat().filter(e => e !== '*');
+    return allExtensions.includes(ext);
 }
 
 function renderFileList() {
@@ -187,7 +209,12 @@ function renderFileList() {
         preview.className = 'file-preview';
         preview.alt = file.name;
 
-        if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        const isHeic = file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
+        const isRaw = formatExtensions['raw'].includes(ext);
+
+        if (isHeic || isRaw) {
+            // Show placeholder for HEIC and RAW files (can't preview in browser)
             preview.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>');
         } else {
             const reader = new FileReader();

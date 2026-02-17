@@ -1,6 +1,9 @@
 import io
+import os
+import sys
 import zipfile
 import webbrowser
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -9,21 +12,56 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, FileResponse
 from PIL import Image
 import pillow_heif
+import rawpy
+import numpy as np
 
 # Register HEIF/HEIC format with Pillow
 pillow_heif.register_heif_opener()
 
+# RAW file extensions
+RAW_EXTENSIONS = {
+    '.cr2', '.cr3',  # Canon
+    '.nef', '.nrw',  # Nikon
+    '.arw', '.srf', '.sr2',  # Sony
+    '.orf',  # Olympus
+    '.rw2',  # Panasonic
+    '.dng',  # Adobe/Universal
+    '.raw', '.rwl',  # Leica
+    '.raf',  # Fuji
+    '.pef', '.ptx',  # Pentax
+    '.x3f',  # Sigma
+    '.srw',  # Samsung
+    '.erf',  # Epson
+    '.mrw',  # Minolta
+    '.3fr',  # Hasselblad
+    '.mef',  # Mamiya
+    '.mos',  # Leaf
+    '.kdc', '.dcr',  # Kodak
+}
+
 app = FastAPI(title="Image Converter")
 
-# Create static directory if not exists
-static_dir = Path(__file__).parent / "static"
-static_dir.mkdir(exist_ok=True)
+
+def get_base_path() -> Path:
+    """Get the base path for resources, handling both dev and frozen exe modes."""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe (PyInstaller)
+        return Path(sys._MEIPASS)
+    else:
+        # Running as script
+        return Path(__file__).parent
+
+
+# Get static directory path
+base_path = get_base_path()
+static_dir = base_path / "static"
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Supported formats
-SUPPORTED_FORMATS = {"PNG", "JPG", "JPEG", "GIF", "WEBP", "HEIC"}
+SUPPORTED_INPUT_FORMATS = {"PNG", "JPG", "JPEG", "GIF", "WEBP", "HEIC", "RAW"}
+SUPPORTED_OUTPUT_FORMATS = {"PNG", "JPG", "JPEG", "GIF", "WEBP"}
 FORMAT_EXTENSIONS = {
     "PNG": "png",
     "JPG": "jpg",
@@ -40,6 +78,37 @@ FORMAT_MIME_TYPES = {
     "WEBP": "image/webp",
     "HEIC": "image/heic",
 }
+
+
+def is_raw_file(filename: str) -> bool:
+    """Check if file is a RAW image based on extension."""
+    ext = Path(filename).suffix.lower()
+    return ext in RAW_EXTENSIONS
+
+
+def open_raw_image(contents: bytes, filename: str) -> Image.Image:
+    """Open a RAW image file and convert to PIL Image."""
+    # rawpy needs a file path, so we use a temp file
+    ext = Path(filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    try:
+        with rawpy.imread(tmp_path) as raw:
+            # Process the RAW image with default settings
+            rgb = raw.postprocess(
+                use_camera_wb=True,  # Use camera white balance
+                half_size=False,     # Full resolution
+                no_auto_bright=False,
+                output_bps=8,        # 8-bit output
+            )
+        # Convert numpy array to PIL Image
+        img = Image.fromarray(rgb)
+        return img
+    finally:
+        # Clean up temp file
+        os.unlink(tmp_path)
 
 
 @app.get("/")
@@ -74,16 +143,11 @@ async def convert_images(
     """
     target_format = target_format.upper()
 
-    # Validate target format (HEIC output not supported by Pillow)
-    if target_format not in SUPPORTED_FORMATS or target_format == "HEIC":
-        if target_format == "HEIC":
-            raise HTTPException(
-                status_code=400,
-                detail="HEIC output is not supported. HEIC can only be used as input format."
-            )
+    # Validate target format
+    if target_format not in SUPPORTED_OUTPUT_FORMATS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported target format: {target_format}. Supported: PNG, JPG, JPEG, GIF, WEBP"
+            detail=f"Unsupported target format: {target_format}. Supported output formats: PNG, JPG, JPEG, GIF, WEBP"
         )
 
     # Validate quality
@@ -95,7 +159,12 @@ async def convert_images(
         try:
             # Read the image
             contents = await file.read()
-            img = Image.open(io.BytesIO(contents))
+
+            # Check if it's a RAW file
+            if is_raw_file(file.filename):
+                img = open_raw_image(contents, file.filename)
+            else:
+                img = Image.open(io.BytesIO(contents))
 
             # Convert to RGB if necessary (for JPG/JPEG which don't support alpha)
             if target_format in ("JPG", "JPEG") and img.mode in ("RGBA", "P"):
@@ -207,16 +276,33 @@ async def convert_images(
 async def get_formats():
     """Return supported input and output formats."""
     return {
-        "input_formats": list(SUPPORTED_FORMATS),
-        "output_formats": [f for f in SUPPORTED_FORMATS if f != "HEIC"],
+        "input_formats": list(SUPPORTED_INPUT_FORMATS),
+        "output_formats": list(SUPPORTED_OUTPUT_FORMATS),
     }
 
 
 if __name__ == "__main__":
     import uvicorn
 
+    # Fix for PyInstaller: redirect stdout/stderr if they are None (windowed mode)
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, 'w')
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, 'w')
+
     # Open browser automatically
     webbrowser.open("http://localhost:8000")
 
-    # Run the server
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Run the server with minimal logging config for exe compatibility
+    if getattr(sys, 'frozen', False):
+        # Running as exe - use simple config to avoid logging issues
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=8000,
+            log_config=None,  # Disable default logging config
+            access_log=False,
+        )
+    else:
+        # Running as script - normal mode
+        uvicorn.run(app, host="0.0.0.0", port=8000)
