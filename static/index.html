@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Converter</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Image Converter</h1>
+            <p>Convert images between PNG, JPG, JPEG, GIF, WEBP, and HEIC formats</p>
+        </header>
+
+        <main>
+            <form id="converter-form">
+                <!-- Format Selection -->
+                <div class="format-section">
+                    <div class="format-group">
+                        <label for="source-format">Source Format (for filtering)</label>
+                        <select id="source-format">
+                            <option value="all">All Formats</option>
+                            <option value="png">PNG</option>
+                            <option value="jpg">JPG / JPEG</option>
+                            <option value="gif">GIF</option>
+                            <option value="webp">WEBP</option>
+                            <option value="heic">HEIC</option>
+                        </select>
+                    </div>
+                    <div class="format-arrow">&#8594;</div>
+                    <div class="format-group">
+                        <label for="target-format">Target Format</label>
+                        <select id="target-format" required>
+                            <option value="PNG">PNG</option>
+                            <option value="JPG">JPG</option>
+                            <option value="WEBP">WEBP</option>
+                            <option value="GIF">GIF</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="upload-section">
+                    <div id="drop-zone" class="drop-zone">
+                        <div class="drop-zone-content">
+                            <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p>Drag & drop images here</p>
+                            <p class="drop-zone-hint">or click to select files</p>
+                        </div>
+                        <input type="file" id="file-input" multiple accept="image/*,.heic,.heif" hidden>
+                    </div>
+                    <div id="file-list" class="file-list"></div>
+                </div>
+
+                <!-- Options -->
+                <div class="options-section">
+                    <div class="option-group">
+                        <label for="quality">Quality: <span id="quality-value">85</span>%</label>
+                        <input type="range" id="quality" min="1" max="100" value="85">
+                        <p class="option-hint">Higher quality = larger file size</p>
+                    </div>
+
+                    <div class="option-group">
+                        <label>Resize (optional)</label>
+                        <div class="resize-mode-tabs">
+                            <button type="button" class="resize-tab active" data-mode="none">None</button>
+                            <button type="button" class="resize-tab" data-mode="percentage">Percentage</button>
+                            <button type="button" class="resize-tab" data-mode="dimensions">Dimensions</button>
+                        </div>
+
+                        <!-- Percentage resize -->
+                        <div id="resize-percentage" class="resize-option" hidden>
+                            <div class="percentage-input">
+                                <input type="number" id="resize-percent" placeholder="100" min="1" max="500" value="100">
+                                <span class="percentage-symbol">%</span>
+                            </div>
+                            <p class="option-hint">Scale image by percentage (e.g., 50% = half size)</p>
+                        </div>
+
+                        <!-- Dimension resize -->
+                        <div id="resize-dimensions" class="resize-option" hidden>
+                            <div class="resize-inputs">
+                                <div class="size-input">
+                                    <label for="width">Width</label>
+                                    <input type="number" id="width" placeholder="Auto" min="1" max="10000">
+                                </div>
+                                <span class="size-x">x</span>
+                                <div class="size-input">
+                                    <label for="height">Height</label>
+                                    <input type="number" id="height" placeholder="Auto" min="1" max="10000">
+                                </div>
+                            </div>
+                            <div class="aspect-ratio-toggle">
+                                <input type="checkbox" id="maintain-aspect-ratio" checked>
+                                <label for="maintain-aspect-ratio">Maintain aspect ratio</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Convert Button -->
+                <button type="submit" id="convert-btn" class="convert-btn" disabled>
+                    <span class="btn-text">Convert Images</span>
+                    <span class="btn-loading" hidden>
+                        <svg class="spinner" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                        </svg>
+                        Converting...
+                    </span>
+                </button>
+            </form>
+
+            <!-- Progress Section -->
+            <div id="progress-section" class="progress-section" hidden>
+                <div class="progress-header">
+                    <span class="progress-title">Converting images...</span>
+                    <span id="progress-count" class="progress-count">0 / 0</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="progress-status" class="progress-status">Preparing...</div>
+            </div>
+
+            <!-- Results -->
+            <div id="results-section" class="results-section" hidden>
+                <div class="results-header">
+                    <h2>Conversion Complete</h2>
+                    <button type="button" id="download-all-btn" class="download-all-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download All
+                    </button>
+                </div>
+                <div id="converted-files-list" class="converted-files-list"></div>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-section" class="error-section" hidden>
+                <p id="error-message"></p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Supports: PNG, JPG, JPEG, GIF, WEBP, HEIC (input only)</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
